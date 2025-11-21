@@ -4,3 +4,4 @@ This is first commit.
 First PR - With sqaush commit to dev and then to main.
 First PR - With sqaush commit to dev and then to main - second commit.
 Second PR - with normal commit.
+Third PR - with normal merge(with only `Allow merge commits` enabled in the github settings. The `Allow squash merging` and `Allow rebase merging` is disabled for this repo).
