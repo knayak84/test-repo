@@ -22,6 +22,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
       - name: Confirm PR still looks approved (no outstanding change requests)
         id: check_reviews
         uses: actions/github-script@v6
