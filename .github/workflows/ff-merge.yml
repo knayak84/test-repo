@@ -1,5 +1,5 @@
 name: Fast-Forward Merge on PR Approval (main only)
-
+permissions: write-all
 on:
   pull_request_review:
     types: [submitted, edited]
