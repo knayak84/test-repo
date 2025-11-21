@@ -1,0 +1,113 @@
+name: Fast-Forward Merge on PR Approval (main only)
+
+on:
+  pull_request_review:
+    types: [submitted, edited]
+
+jobs:
+  ff-merge:
+    name: Fast-Forward Merge (main only, on approval)
+    runs-on: ubuntu-latest
+
+    # Only run when the review that triggered the event is an approval,
+    # the PR targets main, and PR is not a draft.
+    if: >
+      github.event.review.state == 'approved' &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout repository (fetch all history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Confirm PR still looks approved (no outstanding change requests)
+        id: check_reviews
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+
+            // List all reviews on the PR (paginated)
+            const reviews = await github.rest.pulls.listReviews({
+              owner,
+              repo,
+              pull_number: prNumber,
+              per_page: 100
+            }).then(r => r.data);
+
+            if (!reviews || reviews.length === 0) {
+              core.setFailed('No reviews found on this PR.');
+              return;
+            }
+
+            // Keep only the latest review per user
+            const latestByUser = {};
+            for (const r of reviews) {
+              // skip bots / null users defensively
+              if (!r.user || !r.user.login) continue;
+              latestByUser[r.user.login] = r;
+            }
+
+            const latestStates = Object.values(latestByUser).map(r => r.state);
+            const approvals = latestStates.filter(s => s === 'APPROVED').length;
+            const changesRequested = latestStates.filter(s => s === 'CHANGES_REQUESTED').length;
+
+            core.info(`Approvals (latest per user): ${approvals}`);
+            core.info(`Change requests (latest per user): ${changesRequested}`);
+
+            if (changesRequested > 0) {
+              core.setFailed('There is at least one outstanding "Changes requested" review. Cannot merge.');
+              return;
+            }
+
+            if (approvals < 1) {
+              core.setFailed('PR does not have any current APPROVED reviews (latest per user).');
+              return;
+            }
+
+            // Pass metadata to later steps if needed
+            return {approvals, changesRequested};
+
+      - name: Fetch PR branch
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          git fetch origin "pull/${PR_NUMBER}/head:pr-${PR_NUMBER}"
+          git fetch origin main:main
+
+      - name: Attempt fast-forward merge
+        run: |
+          PR_BRANCH="pr-${{ github.event.pull_request.number }}"
+          git checkout main
+          # Ensure main is up-to-date with origin
+          git reset --hard origin/main
+          # Try fast-forward merge; fail if not possible
+          git merge --ff-only "${PR_BRANCH}" || {
+            echo "Fast-forward merge failed. The PR branch cannot be fast-forward merged into main (probably needs rebase)."
+            exit 1
+          }
+
+      - name: Push fast-forward to origin/main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Push the updated main (fast-forward only)
+          git push origin main
+
+      - name: Comment on PR (optional) - success
+        if: ${{ success() }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request.number;
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: pr,
+              body: "Merged to `main` via fast-forward on approval ✅"
+            })
+
