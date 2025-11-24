@@ -18,7 +18,7 @@ jobs:
           echo "Started at: $(date)"
 
       - name: Simulate long-running job
-        run: sleep 30
+        run: sleep 60
 
       - name: Show end time
         run: |
