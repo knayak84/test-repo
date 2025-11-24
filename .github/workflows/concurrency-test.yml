@@ -3,7 +3,7 @@ name: Concurrency Test
 on:
   push:
     branches:
-      - main
+      - dev
 
 concurrency:
   group: concurrency-test-group
