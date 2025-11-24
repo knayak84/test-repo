@@ -3,7 +3,7 @@ name: Concurrency Test
 on:
   push:
     branches:
-      - dev
+      - main
 
 concurrency:
   group: concurrency-test-group
@@ -14,10 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Show start time
-        run: echo "Started at: $(date)"
+        run: |
+          echo "Started at: $(date)"
 
       - name: Simulate long-running job
-        run: sleep 60
+        run: sleep 30
 
       - name: Show end time
-        run: echo "Finished at: $(date)"
+        run: |
+          echo "Finished at: $(date)"
