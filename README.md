@@ -9,3 +9,5 @@ Third PR - with normal merge(with only `Allow merge commits` enabled in the gith
 5th PR - As the linear commit history is good thing to have.The problem is because it uses the Gitflow strategy, the sqash merge is creating issue. So once we go to the Github flow, this gets resolved. So we should be able to have both the squash merge and linear history. So for now, if we enable the regular merge(merge commits), this causes issue in maintaining the linear history. So creating the workflow to merge the PR on approval using the fast forward merge. This should resolve the issue with the squash merge when maintaing two branches like dev and main.
 
 New commit to check the validation.
+
+New commit to test the concurrency. PR - A
