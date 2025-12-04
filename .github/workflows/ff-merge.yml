@@ -104,7 +104,8 @@ jobs:
           # Push the updated main (fast-forward only)
           git push origin main
 
-      - name: Comment and close PR
+      - name: Close PR and add comment
+        id: close_pr
         if: ${{ success() }}
         uses: actions/github-script@v6
         with:
@@ -112,18 +113,96 @@ jobs:
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request.number;
             
-            // Add comment
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: pr,
-              body: "Merged to `main` via fast-forward on approval ✅"
-            });
+            let prClosed = false;
+            let commentAdded = false;
+            let errorMessage = '';
             
-            // Close the PR
-            await github.rest.pulls.update({
-              owner,
-              repo,
-              pull_number: pr,
-              state: 'closed'
-            });
+            try {
+              // Check if PR is closed (GitHub may auto-close when commits are pushed to base branch)
+              let prData = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: pr
+              });
+              
+              // If PR is still open, wait 20 seconds for GitHub to auto-close it
+              if (prData.data.state === 'open') {
+                core.info('PR is still open, waiting 20 seconds for GitHub to auto-close...');
+                await new Promise(resolve => setTimeout(resolve, 20000));
+                
+                // Check again if PR is closed
+                prData = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: pr
+                });
+                
+                // If still open after wait, manually close it
+                if (prData.data.state === 'open') {
+                  core.info('PR still open after wait, closing manually...');
+                  await github.rest.pulls.update({
+                    owner,
+                    repo,
+                    pull_number: pr,
+                    state: 'closed'
+                  });
+                  core.info('PR closed successfully');
+                  prClosed = true;
+                } else {
+                  core.info('PR was auto-closed by GitHub during wait period');
+                  prClosed = true;
+                }
+              } else {
+                core.info('PR is already closed');
+                prClosed = true;
+              }
+              
+              // Add comment to the closed PR
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pr,
+                body: "Merged to `main` via fast-forward on approval ✅"
+              });
+              core.info('Comment added to PR');
+              commentAdded = true;
+              
+            } catch (error) {
+              errorMessage = error.message;
+              core.setFailed(`Failed to close PR or add comment: ${error.message}`);
+              throw error;
+            }
+            
+            // Set outputs for summary step
+            core.setOutput('pr_closed', prClosed);
+            core.setOutput('comment_added', commentAdded);
+            core.setOutput('error', errorMessage);
+
+      - name: Workflow Summary
+        if: always()
+        run: |
+          echo "## Fast-Forward Merge Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ **Status:** Workflow completed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Fast-forward merge completed" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Changes pushed to main" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "${{ steps.close_pr.outputs.pr_closed }}" == "true" ]; then
+              echo "- ✅ PR closed" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ❌ PR could not be closed" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ "${{ steps.close_pr.outputs.comment_added }}" == "true" ]; then
+              echo "- ✅ Comment added to PR" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ❌ Comment could not be added" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "❌ **Status:** Workflow failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Error:** ${{ steps.close_pr.outputs.error }}" >> $GITHUB_STEP_SUMMARY
+          fi
