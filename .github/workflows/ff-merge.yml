@@ -17,6 +17,12 @@ jobs:
       github.event.pull_request.draft == false
 
     steps:
+      - name: Wait for potential review changes (2 minutes)
+        run: |
+          echo "Waiting 2 minutes to allow reviewers to change their approval if needed..."
+          sleep 120
+          echo "Wait period complete. Proceeding with merge validation."
+
       - name: Checkout repository (fetch all history)
         uses: actions/checkout@v4
         with:
